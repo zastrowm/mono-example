@@ -17,7 +17,7 @@ uv.lock
 
 temp_python_sdk
 sdk-typescript
-package-lock.json
+# package-lock.json — allow lock file for reproducible CI builds
 
 # Generated documentation
 docs/api-reference/
