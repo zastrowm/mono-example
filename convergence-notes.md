@@ -137,6 +137,9 @@ raw-options.git_describe_command = "git describe --dirty --tags --long --abbrev=
 - Path-based CI triggers correctly limited which workflows ran (Python CI didn't trigger for TS-only paths)
 - History is fully preserved and filterable: `git log -- strands-ts/` shows only TS commits
 - Docs merge was completely conflict-free despite 574 files
+- MCP merge was completely conflict-free
+- Path isolation works: a PR touching only `strands-ts/` triggered only TypeScript CI
+- Tag-triggered publish works: pushing `python/v1.40.1` triggered Python Publish workflow, `hatch build` succeeded (version resolved correctly from tag), failed only at PyPI auth (expected — no trusted publisher configured on sandbox repo)
 
 ---
 
