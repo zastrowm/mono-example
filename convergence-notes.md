@@ -143,6 +143,108 @@ raw-options.git_describe_command = "git describe --dirty --tags --long --abbrev=
 
 ---
 
+## Pre-Merge Checklist (per repo)
+
+Actions to take in each source repo *before* the `--allow-unrelated-histories` merge. Doing these first ensures a conflict-free merge and clean history.
+
+### `sdk-python` (becomes the monorepo base)
+
+1. **Move all files into `strands-py/`**
+   ```bash
+   mkdir strands-py
+   git mv <everything except .git> strands-py/
+   ```
+2. **Archive `.github/`** → `strands-py/.github-archive/`
+3. **Archive `.gitignore`** → `strands-py/.gitignore-archive`
+4. **Update `pyproject.toml`** (now at `strands-py/pyproject.toml`):
+   ```toml
+   [tool.hatch.version]
+   source = "vcs"
+   raw-options.root = ".."
+   raw-options.tag_regex = "^python/v(?P<version>.+)$"
+   raw-options.git_describe_command = "git describe --dirty --tags --long --abbrev=40 --match python/v*"
+   ```
+5. **Record all tag→commit mappings** (for namespacing later):
+   ```bash
+   git tag -l | while read tag; do echo "$tag $(git rev-list -n1 $tag)"; done > /tmp/python-tags.txt
+   ```
+6. **Create `python/v*` namespaced tags** pointing to the same commits as bare tags:
+   ```bash
+   for tag in $(git tag -l 'v*'); do
+     git tag "python/$tag" "$(git rev-list -n1 $tag)"
+   done
+   ```
+
+### `sdk-typescript`
+
+1. **Rename `strands-py/` → `strands-py-wasm/`** (avoids collision with Python SDK subdir)
+   ```bash
+   git mv strands-py strands-py-wasm
+   ```
+2. **Archive `.github/`** → `.github-archive/`
+3. **Rename `docs/` → `dev-docs/`** (avoids collision with docs site repo)
+   ```bash
+   git mv docs dev-docs
+   ```
+4. **Leave root workspace files in place** (`package.json`, `package-lock.json`, `.node-version`, `.prettierrc`, `.husky/`) — they become the monorepo workspace config
+5. **Record all tag→commit mappings** before merge:
+   ```bash
+   git tag -l | while read tag; do echo "$tag $(git rev-list -n1 $tag)"; done > /tmp/typescript-tags.txt
+   ```
+
+### `docs`
+
+1. **Move everything into `site/`** except `designs/`:
+   ```bash
+   mkdir site
+   git mv <everything except .git and designs/> site/
+   ```
+2. **Leave `designs/` at top level** — it lands at monorepo root naturally
+3. **Archive `.github/`** → `site/.github-archive/`
+4. **Un-gitignore `package-lock.json`** in `site/.gitignore` (needed for `npm ci` in CI)
+5. **Generate and commit `site/package-lock.json`**:
+   ```bash
+   cd site && npm install && git add package-lock.json
+   ```
+
+### `mcp-server`
+
+1. **Move all files into `strands-mcp/`**:
+   ```bash
+   mkdir strands-mcp
+   git mv <everything except .git> strands-mcp/
+   ```
+2. **Archive `.github/`** → `strands-mcp/.github-archive/`
+3. **Update `pyproject.toml`** (now at `strands-mcp/pyproject.toml`):
+   ```toml
+   [tool.hatch.version]
+   source = "vcs"
+   raw-options.root = ".."
+   raw-options.tag_regex = "^mcp/v(?P<version>.+)$"
+   raw-options.git_describe_command = "git describe --dirty --tags --long --abbrev=40 --match mcp/v*"
+   ```
+4. **Fix hatch default env** — add `[tool.hatch.envs.default]` with `features = ["dev"]`
+5. **Record all tag→commit mappings**:
+   ```bash
+   git tag -l | while read tag; do echo "$tag $(git rev-list -n1 $tag)"; done > /tmp/mcp-tags.txt
+   ```
+
+### Post-Merge Steps (in the monorepo)
+
+1. **Create namespaced tags** for TypeScript and MCP using the saved mappings:
+   ```bash
+   # TypeScript
+   while read tag sha; do git tag "typescript/$tag" "$sha" 2>/dev/null; done < /tmp/typescript-tags.txt
+   # MCP
+   while read tag sha; do git tag "mcp/$tag" "$sha" 2>/dev/null; done < /tmp/mcp-tags.txt
+   ```
+2. **Write fresh `.github/workflows/`** with path-based triggers (don't merge workflow files from source repos)
+3. **Write unified `.gitignore`** combining entries from all repos
+4. **Write root `README.md`** with package table and release docs
+5. **Verify**: `git log --oneline -- <subdir>/` shows correct isolated history for each package
+
+---
+
 ## Open Questions
 
 1. ~~**setuptools-scm fix strategy**~~ — **RESOLVED**: Use `root = ".."` + `tag_regex` + custom `git_describe_command`. Keeps VCS automation, works locally and in CI.
