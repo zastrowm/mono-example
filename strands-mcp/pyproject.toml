@@ -82,6 +82,9 @@ lint-fix = [
     "ruff check --fix"
 ]
 
+[tool.hatch.envs.default]
+features = ["dev"]
+
 [tool.hatch.envs.default.scripts]
 list = [
     "echo 'Scripts commands available for default env:'; hatch env show --json | jq --raw-output '.default.scripts | keys[]'"
