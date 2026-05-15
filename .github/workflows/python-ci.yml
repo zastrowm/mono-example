@@ -137,9 +137,8 @@ jobs:
         uses: astral-sh/setup-uv@v7
 
       - name: Check API breaking changes
-        working-directory: strands-py
         run: |
-          if ! uvx griffe check --search src --format github strands --against "main"; then
+          if ! uvx griffe check --search strands-py/src --format github strands --against "main"; then
             echo "Potential API changes detected (review if actually breaking)"
             exit 1
           fi
