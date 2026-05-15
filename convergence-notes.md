@@ -92,12 +92,51 @@ raw-options.git_describe_command = "git describe --dirty --tags --long --abbrev=
 
 ---
 
+### `docs/` directory collision
+
+**When:** After merging docs repo  
+**Symptom:** Both sdk-typescript and the docs repo want to use `docs/` at root  
+**Why:** sdk-typescript had a `docs/` directory with dev docs (DEPENDENCIES.md, TESTING.md, etc.). The original plan wanted `docs/` as a symlink to `site/src/content/docs`.  
+**Resolution:** Renamed TS dev docs to `dev-docs/`. Skipped the symlink for now — `site/src/content/docs` is the canonical path.
+
+### Docs repo merge: conflict-free
+
+**When:** Merging docs repo with `--allow-unrelated-histories`  
+**Result:** Zero conflicts. `designs/` landed at top level naturally (it wasn't moved into `site/`). `site/` contains the full Astro site.  
+**Note:** The docs repo is 98MB (images/assets) — the largest of the four repos.
+
+### MCP server hatch default env missing pytest
+
+**When:** MCP CI test job  
+**Symptom:** `pytest: not found` (exit code 127)  
+**Why:** The `[tool.hatch.envs.default.scripts]` section defines a `test` script that runs `pytest`, but the default environment didn't declare `features = ["dev"]` to pull in the dev optional dependencies (which include pytest).  
+**Fix:** Add `[tool.hatch.envs.default]` with `features = ["dev"]` to `strands-mcp/pyproject.toml`.  
+**Impact on real migration:** This is a pre-existing issue in the mcp-server repo — their CI probably used a different env or installed deps differently. Needs fixing regardless.
+
+### MCP tag collisions (silent loss)
+
+**When:** Fetching mcp-server tags into the monorepo  
+**Symptom:** MCP's `v0.1.x` and `v0.2.x` tags were silently skipped because Python SDK already has tags with those names  
+**Why:** Git won't overwrite existing tags during fetch  
+**Fix:** Manually created `mcp/v*` namespaced tags using commit SHAs from the standalone clone. 2 of 11 tags pointed to commits not in main's history (likely squash-merged PRs) and couldn't be created.  
+**Impact on real migration:** Need the tag-mapping script from the plan. Also need to decide if orphaned tag commits matter (they reference work that was squash-merged, so the code is there, just not at that exact SHA).
+
+### Path filter doesn't self-trigger on workflow file changes
+
+**When:** Pushed a change to `.github/workflows/python-ci.yml` only  
+**Symptom:** Python CI didn't run  
+**Why:** Path filter `strands-py/**` correctly excluded `.github/workflows/` changes  
+**Impact on real migration:** Workflow-only PRs won't trigger the associated CI. This is arguably correct behavior, but worth documenting. Could add `.github/workflows/python-*` to the Python CI paths filter if we want workflow changes to self-test.
+
+---
+
 ## What Worked Well
 
-- `git merge --allow-unrelated-histories` cleanly combined both histories with only `.gitignore` as a conflict
+- `git merge --allow-unrelated-histories` cleanly combined histories — only `.gitignore` conflict across 3 merges (Python, TypeScript, docs)
 - TypeScript's existing subdirectory structure (`strands-ts/`, `strands-wasm/`, etc.) needed minimal changes
 - Path-based CI triggers correctly limited which workflows ran (Python CI didn't trigger for TS-only paths)
 - History is fully preserved and filterable: `git log -- strands-ts/` shows only TS commits
+- Docs merge was completely conflict-free despite 574 files
 
 ---
 
@@ -105,5 +144,7 @@ raw-options.git_describe_command = "git describe --dirty --tags --long --abbrev=
 
 1. ~~**setuptools-scm fix strategy**~~ — **RESOLVED**: Use `root = ".."` + `tag_regex` + custom `git_describe_command`. Keeps VCS automation, works locally and in CI.
 2. ~~**Python tag prefix going forward**~~ — **RESOLVED**: `tag_regex = "^python/v(?P<version>.+)$"` combined with `git_describe_command --match python/v*` handles the namespaced tags correctly.
-3. **Shared dependencies** — the TS repo has a root `pyproject.toml` (for the WASM Python projection). How does that interact with `strands-py/pyproject.toml`? Do tools get confused by two pyproject.toml files?
-4. **griffe API compat check** — needs rework for monorepo paths. The `--against "main"` baseline won't have `strands-py/src/` until after cutover. May need to skip the first run or rebase the comparison target.
+3. ~~**Shared dependencies**~~ — **RESOLVED**: The root `pyproject.toml` is intentionally a monorepo dev-tools config (ruff, pyright, pytest). It's not published and already has monorepo-aware paths (`strands-py/src/**`). No conflict with `strands-py/pyproject.toml`.
+4. ~~**griffe API compat check**~~ — **RESOLVED**: Run griffe from repo root with `--search strands-py/src` instead of using `working-directory`. Both current and `--against "main"` baseline resolve the same path.
+5. ~~**Site build CI**~~ — **RESOLVED**: The docs repo gitignored `package-lock.json`, so `npm ci` fails. Fix: use `npm install` for now, un-gitignore the lock file so it can be committed. For the real migration, generate and commit `site/package-lock.json` for reproducible builds. The site builds and tests independently of the root workspace `package.json`.
+6. **`docs/` directory collision** — sdk-typescript brought a `docs/` dir with dev docs. Renamed to `dev-docs/` to avoid conflict.
